@@ -1,0 +1,11 @@
+#!/bin/sh
+if [ -x "$HOMEBREW_PREFIX/bin/automake" ]; then
+  ACLOCAL_PATH="-I$HOMEBREW_PREFIX/share/aclocal"
+  for x in $HOMEBREW_DEP_PREFIXES; do
+    ACLOCAL_PATH="-I$HOMEBREW_PREFIX/opt/$x/share/aclocal $ACLOCAL_PATH"
+  done
+  exec automake $ACLOCAL_PATH "$@"
+else
+  echo "You need to: brew install automake"
+  exit 1
+fi

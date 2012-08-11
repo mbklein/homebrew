@@ -6,6 +6,10 @@
 
 require 'global'
 
+def superenv?
+  MacOS::Xcode.version >= "4.3"
+end
+
 at_exit do
   # the whole of everything must be run in at_exit because the formula has to
   # be the run script as __END__ must work for *that* formula.
@@ -15,14 +19,19 @@ at_exit do
   begin
     raise $! if $! # an exception was already thrown when parsing the formula
 
-    require 'extend/ENV'
     require 'hardware'
     require 'keg'
 
-    ENV.extend(HomebrewEnvExtension)
+    if superenv?
+      require 'superenv'
+    else
+      require 'extend/ENV'
+      ENV.extend(HomebrewEnvExtension)
+
+      # we must do this or tools like pkg-config won't get found by configure scripts etc.
+      ENV.prepend 'PATH', "#{HOMEBREW_PREFIX}/bin", ':' unless ORIGINAL_PATHS.include? HOMEBREW_PREFIX/'bin'
+    end
     ENV.setup_build_environment
-    # we must do this or tools like pkg-config won't get found by configure scripts etc.
-    ENV.prepend 'PATH', "#{HOMEBREW_PREFIX}/bin", ':' unless ORIGINAL_PATHS.include? HOMEBREW_PREFIX/'bin'
 
     # Force any future invocations of sudo to require the user's password to be
     # re-entered. This is in-case any build script call sudo. Certainly this is
@@ -62,18 +71,22 @@ def install f
     dep = Formula.factory dep
     if dep.keg_only?
       opt = HOMEBREW_PREFIX/:opt/dep.name
-
-      raise "#{opt} not present\nReinstall #{dep}." unless opt.directory?
-
-      ENV.prepend 'LDFLAGS', "-L#{opt}/lib"
-      ENV.prepend 'CPPFLAGS', "-I#{opt}/include"
-      ENV.prepend 'PATH', "#{opt}/bin", ':'
-
       pcdir = opt/'lib/pkgconfig'
-      ENV.prepend 'PKG_CONFIG_PATH', pcdir, ':' if pcdir.directory?
-
       acdir = opt/'share/aclocal'
-      ENV.prepend 'ACLOCAL_PATH', acdir, ':' if acdir.directory?
+
+      raise "#{opt} not present\nReinstall #{dep}. Sorry :(" unless opt.directory?
+
+      ENV.prepend 'PATH', "#{opt}/bin", ':' if (opt/:bin).directory?
+      ENV.prepend 'PKG_CONFIG_PATH', pcdir, ':' if pcdir.directory?
+      ENV.prepend 'CMAKE_PREFIX_PATH', opt, ':'
+
+      if superenv?
+        ENV.prepend 'HOMEBREW_DEP_PREFIXES', dep.name
+      else
+        ENV.prepend 'LDFLAGS', "-L#{opt}/lib" if (opt/:lib).directory?
+        ENV.prepend 'CPPFLAGS', "-I#{opt}/include" if (opt/:include).directory?
+        ENV.prepend 'ACLOCAL_PATH', acdir, ':' if acdir.directory?
+      end
     end
   end
 
